@@ -11,6 +11,11 @@ def log(*args):
 
 randbit = random_bit_generator(integer_seed=0)  #seed=b"\x00"*32)
 
+
+#
+# Implementation of figures in the paper.
+#
+
 async def unbalanced_sspir(io, pid, m, d, A, x, op="UnbalancedSSPIR"):
     """ UnbalancedSSPIR """
     give = partial(io.give, op_id=op)
@@ -108,10 +113,15 @@ async def balanced_sspir(io, pid, m, d, A, x, op="BalancedSSPIR"):
 
 
     """ BalancedSSPIR : Step 3 """
+    if pid == 0:
+        x0 = x
+        z0 = x0[: ceil(log2(q))]
+        y0 = x0[ceil(log2(q)) : ceil(log2(m))]
+
     if pid == 1:
-        x2 = x
-        z2 = x2[: ceil(log2(q))]
-        y2 = x2[ceil(log2(q)) : ceil(log2(m))]
+        x1 = x
+        z1 = x1[: ceil(log2(q))]
+        y1 = x1[ceil(log2(q)) : ceil(log2(m))]
 
     if pid == 2:
         x2 = x
@@ -119,24 +129,26 @@ async def balanced_sspir(io, pid, m, d, A, x, op="BalancedSSPIR"):
         y2 = x2[ceil(log2(q)) : ceil(log2(m))]
 
     """ BalancedSSPIR : Step 4 """
+    if pid == 0:
+        u1 = await unbalanced_sspir(io, 0, m // q, d * q, None, y0, op="BalancedSSPIR_subroutine_step_4")
+
     if pid == 1:
-        u1 = await unbalanced_sspir(io, 1, m // q, d * q, B1, y2)
+        u1 = await unbalanced_sspir(io, 1, m // q, d * q, B1, y1, op="BalancedSSPIR_subroutine_step_4")
 
     if pid == 2:
-        u2 = await unbalanced_sspir(io, 2, m // q, d * q, B2, y2)
+        u2 = await unbalanced_sspir(io, 2, m // q, d * q, B2, y2, op="BalancedSSPIR_subroutine_step_4")
 
     """ BalancedSSPIR : Step 5 """
-    # This step is buggy. Fix it.
+    # This step is buggy...
     if pid == 1:
         v1 = []
         for i in range(q):
             v1.append(u1[i*d : i*d + i])
 
-
     if pid == 2:
         v2 = []
         for i in range(q):
-            v2.append(await u2[i * d: i * d + i])
+            v2.append(u2[i * d: i * d + i])
 
     """ BalancedSSPIR : Step 6 """
     if pid == 1:
@@ -146,18 +158,9 @@ async def balanced_sspir(io, pid, m, d, A, x, op="BalancedSSPIR"):
         return v2
 
 
-
-
-
-
-
-
-
-
-
-
-
-
+#
+# Methods for testing a run of the above code.
+#
 
 async def simulate_unbalanced_sspir(test_m, test_d, test_A1, test_A2, test_x0, test_x1, test_x2):
     with concurrent.futures.ThreadPoolExecutor() as executor:
