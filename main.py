@@ -4,6 +4,7 @@ import concurrent
 from utils import random_bit_generator, xor, bits_to_index
 from math import log2, ceil
 from functools import partial
+import numpy
 
 def log(*args):
     print(*args)
@@ -96,7 +97,61 @@ async def balanced_sspir(io, pid, m, d, A, x, op="BalancedSSPIR"):
 
 
     """ BalancedSSPIR : Step 2 """
-    # Ignore, buggy, not commited yet
+    B = []
+    if pid == 1:
+        A1 = A
+        B1 = numpy.array(A1).reshape(m // q, d * q).tolist()
+
+    if pid == 2:
+        A2 = A
+        B2 = numpy.array(A2).reshape(m // q, d * q).tolist()
+
+
+    """ BalancedSSPIR : Step 3 """
+    if pid == 1:
+        x2 = x
+        z2 = x2[: ceil(log2(q))]
+        y2 = x2[ceil(log2(q)) : ceil(log2(m))]
+
+    if pid == 2:
+        x2 = x
+        z2 = x2[: ceil(log2(q))]
+        y2 = x2[ceil(log2(q)) : ceil(log2(m))]
+
+    """ BalancedSSPIR : Step 4 """
+    if pid == 1:
+        u1 = await unbalanced_sspir(io, 1, m // q, d * q, B1, y2)
+
+    if pid == 2:
+        u2 = await unbalanced_sspir(io, 2, m // q, d * q, B2, y2)
+
+    """ BalancedSSPIR : Step 5 """
+    # This step is buggy. Fix it.
+    if pid == 1:
+        v1 = []
+        for i in range(q):
+            v1.append(u1[i*d : i*d + i])
+
+
+    if pid == 2:
+        v2 = []
+        for i in range(q):
+            v2.append(await u2[i * d: i * d + i])
+
+    """ BalancedSSPIR : Step 6 """
+    if pid == 1:
+        return v1
+
+    if pid == 2:
+        return v2
+
+
+
+
+
+
+
+
 
 
 
@@ -173,6 +228,6 @@ if __name__ == "__main__":
 
     test_unbalanced_sspir, test_balanced_sspir = make_sspir_tests()
     assert test_unbalanced_sspir()
-    # assert test_balanced_sspir()
+    assert test_balanced_sspir()
 
     log("Exiting...")
