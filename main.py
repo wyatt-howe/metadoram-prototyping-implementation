@@ -10,6 +10,99 @@ def log(*args):
 
 randbit = random_bit_generator(integer_seed=0)  #seed=b"\x00"*32)
 
+async def unbalanced_sspir(io, pid, m, d, A, x, op="UnbalancedSSPIR"):
+    """ UnbalancedSSPIR """
+    give = partial(io.give, op_id=op)
+    get = partial(io.get, op_id=op)
+
+    """ UnbalancedSSPIR : Step 1 """
+    if pid == 0:
+        x1 = x
+
+    if pid == 1:
+        await give('x1 for P2', x)
+        x2 = xor(x, await get('x2 for P1'))
+
+    if pid == 2:
+        await give('x2 for P1', x)
+        x2 = xor(x, await get('x1 for P2'))
+
+
+    """ UnbalancedSSPIR : Step 2 """
+    if pid == 0:
+        Q = [1 if i == bits_to_index(x1) else 0 for i in range(m)]
+        assert sum(Q) == 1
+
+
+    """ UnbalancedSSPIR : Step 3 """
+    if pid == 0:
+        Q1 = [next(randbit) for _ in range(m)]
+        Q2 = xor(Q, Q1)
+        await give('Q1 for P1', Q1)
+        await give('Q2 for P2', Q2)
+
+    if pid == 1:
+        Q1 = await get('Q1 for P1')
+
+    if pid == 2:
+        Q2 = await get('Q2 for P2')
+
+
+    """ UnbalancedSSPIR : Step 4 """
+    if pid == 1:
+        assert len(Q1) == m
+        index_x2_for_permuting = bits_to_index(x2)
+        W1 = [Q1[i ^ index_x2_for_permuting] for i in range(m)]
+        assert sum(W1) == sum(Q1)
+
+    if pid == 2:
+        assert len(Q2) == m
+        index_x2_for_permuting = bits_to_index(x2)
+        W2 = [Q2[i ^ index_x2_for_permuting] for i in range(m)]
+        assert sum(W2) == sum(Q2)
+
+
+    """ UnbalancedSSPIR : Step 5 """
+    if pid == 1:
+        A1 = A
+        assert len(A1) == m
+        assert all(len(A1[i]) == d for i in range(m))
+        v1 = xor(*[[A1[i][j] * W1[i] for j in range(d)] for i in range(m)])
+
+    if pid == 2:
+        A2 = A
+        assert len(A2) == m
+        assert all(len(A2[i]) == d for i in range(m))
+        v2 = xor(*[[A2[i][j] * W2[i] for j in range(d)] for i in range(m)])
+
+
+    """ UnbalancedSSPIR : Step 6 """
+    if pid == 1:
+        return v1
+
+    if pid == 2:
+        return v2
+
+
+
+async def balanced_sspir(io, pid, m, d, A, x, op="BalancedSSPIR"):
+    """ BalancedSSPIR """
+    give = partial(io.give, op_id=op)
+    get = partial(io.get, op_id=op)
+
+    """ BalancedSSPIR : Step 1 """
+    q = 2**ceil((log2(m) - log2(d))/2)
+    assert q**2 >= m/d
+
+
+    """ BalancedSSPIR : Step 2 """
+    # Ignore, buggy, not commited yet
+
+
+
+
+
+
 
 async def simulate_unbalanced_sspir(test_m, test_d, test_A1, test_A2, test_x0, test_x1, test_x2):
     with concurrent.futures.ThreadPoolExecutor() as executor:
