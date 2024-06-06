@@ -61,21 +61,21 @@ async def and_with_jit_triple_generation(io, pid, xi, yi, op="MultiplyJIT"):
 
     if pid == 1:
         triple_a1_b1_c1 = await get('a1,b1,c1 for P1')
-        de1, state1 = and_secret_bit_start(xi, yi, triple_a1_b1_c1)
+        de1, state1 = and_secret_bit_start(xi, yi, triple_a1_b1_c1, pid==2)
         await give('de1 for P2', de1)  # Server 1 reveals its d1 and e1 shares
 
     if pid == 2:
-        triple_a2_b2_c2 = await get('a2,b2,c2 for P1')
-        de2, state2 = and_secret_bit_start(xi, yi, triple_a2_b2_c2)
+        triple_a2_b2_c2 = await get('a2,b2,c2 for P2')
+        de2, state2 = and_secret_bit_start(xi, yi, triple_a2_b2_c2, pid==2)
         await give('de2 for P1', de2)  # Server 2 reveals its d1 and e1 shares
 
     if pid == 1:
         __de2 = await get('de2 for P1')
-        return and_secret_bit_end(de1, __de2, triple_a1_b1_c1)
+        return and_secret_bit_end(*de1, *__de2, *state1)
 
     if pid == 2:
         __de1 = await get('de1 for P2')
-        return and_secret_bit_end(de2, __de1, triple_a2_b2_c2)
+        return and_secret_bit_end(*de2, *__de1, *state2)
 
 
 #
@@ -283,11 +283,36 @@ def make_sspir_tests():
         return any((Axlit == v, Axbig == v))
     return partial(test_sspir, simulate_unbalanced_sspir), partial(test_sspir, simulate_balanced_sspir)
 
+async def simulate_jit_and(x1, y1, x2, y2):
+    io, loop, executor = Message(), asyncio.get_event_loop(), concurrent.futures.ThreadPoolExecutor()
+    _, z1, z2 = [await f for f in asyncio.as_completed([
+        await loop.run_in_executor(executor, and_with_jit_triple_generation, io, 0, None, None),
+        await loop.run_in_executor(executor, and_with_jit_triple_generation, io, 1, x1, y1),
+        await loop.run_in_executor(executor, and_with_jit_triple_generation, io, 2, x2, y2)
+    ])]
+    return z1, z2
+
+def test_jit_and():
+    results = []
+    for x in (0, 1):
+        for y in (0, 1):
+            for r_x in (0, 1):
+                for r_y in (0, 1):
+                    x1, x2 = r_x, xor_bit(r_x, x)
+                    y1, y2 = r_y, xor_bit(r_y, y)
+                    z1, z2 = asyncio.run(simulate_jit_and(x1, y1, x2, y2))
+                    z = xor_bit(z1, z2)
+                    results.append(and_bit(x, y) == z)
+    return all(results)
+
+
 if __name__ == "__main__":
     log("Entering main...")
 
     test_unbalanced_sspir, test_balanced_sspir = make_sspir_tests()
     # assert test_unbalanced_sspir()
     # assert test_balanced_sspir()
+
+    assert test_jit_and()
 
     log("Exiting...")
