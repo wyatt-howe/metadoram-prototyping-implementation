@@ -12,7 +12,7 @@ def random_byte_generator(seed):
         ctr = ctr + 1
 
 def random_bit_generator(integer_seed):
-    seed = int.to_bytes(integer_seed, length=32)
+    seed = int.to_bytes(integer_seed, length=32, byteorder='big')
     randbytes = random_byte_generator(seed)
     for byte in randbytes:
         for bit_idx in range(8):
@@ -26,5 +26,11 @@ def xor(*args):
                 xs0[j] = xs0[j] ^ xsij
         return xs0
 
-def bits_to_index(bits):
-    return sum([2**i * b for i, b in enumerate(bits)])
+def bits_to_index(bits, bitorder='big'):
+    bits_ = bits if bitorder=='little'\
+        else (
+            reversed(bits) if bitorder=='big'
+            else
+                ValueError('Invalid endianness specified.')
+        )
+    return sum([2**i * b for i, b in enumerate(bits_)])
