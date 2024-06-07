@@ -1,3 +1,5 @@
+import math
+
 from common import Message
 import asyncio
 import concurrent
@@ -5,7 +7,7 @@ from utils import random_bit_generator, xor, bits_to_index
 from math import log2, ceil
 from functools import partial
 import numpy
-
+import random
 def log(*args):
     print(*args)
 
@@ -223,6 +225,145 @@ async def balanced_sspir(io, pid, m, d, A, x, op="BalancedSSPIR"):
     if pid == 2:
         return v2
 
+#
+# Implementation of Write - Figure 1
+#
+async def Write(io, op, pid, n, t, d, x, v_new):
+    give = partial(io.give, op_id=op)
+    get = partial(io.get, op_id=op)
+
+    if pid == 0:
+        c = (log2(n)*log2(n)/log2(log2(n)))
+        # Write: Step 1
+        r = random.choice(range(1, 2 * n + 1))
+
+        # Write: Step 2
+        j = t % c
+
+        # Write : Step 3
+        e = ""
+        for _ in range(d):
+            e+=""+str(random.choice([0,1]))
+
+        await give("e", e)
+
+        # Write : Step 5
+        V = await get('V')
+        V[0][j] = v_new
+        await give('V', V)
+
+        R = await get('R')
+        R[0][j] = r
+        await give('R', R)
+
+        X = await get('X')
+        X[0][j] = x
+        await give('X', X)
+
+    if pid == 1:
+        e = get("e")
+        # Write : Step 4
+        C1 = []
+        for j in range(len(v_new)):
+            C1[j] = xor_bit(v_new[j], e[j])
+
+    if pid == 2:
+        e = get("e")
+        # Write : Step 4
+        C1 = []
+        for j in range(len(v_new)):
+            C1[j] = xor_bit(v_new[j], e[j])
+
+
+async def Rebuild(io, op, pid, n, c, t, d):
+    give = partial(io.give, op_id=op)
+    get = partial(io.get, op_id=op)
+
+    # Rebuild: Step 1
+    l = log2(n/c)*log2(n)*log2(n)
+    for i in range(l):
+        bi_c = (math.pow(log2(n), 0.5*i))*c
+        # Rebuild: Step 1 (a)
+        if t == (0%bi_c):
+            # Rebuild : Step 1 (a) (i)
+            biplus_c = (math.pow(log2(n), 0.5 * (i+1)))*c
+            u = (t/bi_c)%biplus_c
+            # Rebuild : Step 1 (a) (ii)
+            for j in range(bi_c):
+
+
+                V = await get('V')
+                V[i+1][u*bi_c + j ] = V[i][j]
+                V[i][j] = None
+                await give('V', V)
+
+                X = await get('X')
+                X[i+1][u*bi_c + j ] =X[i][j]
+                X[i][j] = None
+                await give('X', X)
+
+            if pid == 0:
+
+                R = await get('R')
+                R[i + 1][u * bi_c + j] = R[i][j]
+                R[i][j] = None
+                await give('R', R)
+
+                e = ""
+                for _ in range(d):
+                   e+=""+str(random.choice([0,1]))
+                E = await get('E')
+                E[i + 1][u * bi_c + j] = e
+                await give('E', E)
+
+                Z = await get('Z')
+                Z[i + 1][u * bi_c + j] = xor(V[i+1][u*bi_c + j ], E[i + 1][u * bi_c + j])
+                await give('Z', Z)
+
+                # Rebuild : Step (a) (iii). Missing.
+                # P0 must build a Let [Q]0 be the injective mapping from [b
+                # i
+                # c] to [2(1+ϵ)b
+                # i
+                # c]
+                # that maps Ri,1...bic
+                # to satisfying locations with these hash functions.
+
+                # Rebuild : Step (a) (iv).
+                give("Q0", [])
+
+            if pid == 1:
+                T = await get('T')
+                Z = await get('Z')
+                Q0 = await get('Q0')
+                T[i + 1][u] = fRoute(Z[i+1], Q0)
+                await give('T', T)
+
+            if pid == 2:
+                T = await get('T')
+                Z = await get('Z')
+                Q0 = await get('Q0')
+                T[i + 1][u] = fRoute(Z[i + 1], Q0)
+                await give('T', T)
+        if t == n:
+            Refresh()
+
+#
+# Implementation of Extract and Refresh - Figure 3
+#
+def fRoute(Z, Q):
+    pass
+
+def init(n, d, V):
+    pass
+
+def Extract():
+    return []
+    pass
+
+def Refresh():
+    V = Extract()
+    init(0, 0, V)
 
 #
 # Methods for testing a run of the above code.
