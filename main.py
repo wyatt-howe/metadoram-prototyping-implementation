@@ -1,11 +1,13 @@
+import math
+
 from common import Message
 import asyncio
 import concurrent
-from utils import random_bit_generator, xor, bits_to_index
+from utils import random_bit_generator, xor, bits_to_index, permutation
 from math import log2, ceil
 from functools import partial
 import numpy
-
+import random
 def log(*args):
     print(*args)
 
@@ -223,6 +225,279 @@ async def balanced_sspir(io, pid, m, d, A, x, op="BalancedSSPIR"):
     if pid == 2:
         return v2
 
+#
+# Implementation of ReadWrite - Figure 1
+#
+async def ReadWrite(io, op, pid, x, y, f):
+    give = partial(io.give, op_id=op)
+    get = partial(io.get, op_id=op)
+    # ReadWrite : Step 1
+    v = Read(x)
+    # ReadWrite : Step 2
+    v_new = f.read(v, y)
+    # ReadWrite : Step 3
+    n = await get("n")
+    t = await get("t")
+    d = await get("d")
+    c = (log2(n) * log2(n) / log2(log2(n)))
+    await Write(io, op, pid, n, t, d, x, v_new)
+    # ReadWrite : Step 4
+    await Rebuild(io, op, pid, n, c, t, d)
+    # ReadWrite : Step 5
+    t = t + 1
+    await give("t", t)
+    # ReadWrite : Step 6
+    return v
+
+#
+# Implementation of Write - Figure 1
+#
+async def Write(io, op, pid, n, t, d, x, v_new):
+    give = partial(io.give, op_id=op)
+    get = partial(io.get, op_id=op)
+
+    if pid == 0:
+        c = (log2(n)*log2(n)/log2(log2(n)))
+        # Write: Step 1
+        r = random.choice(range(1, 2 * n + 1))
+
+        # Write: Step 2
+        j = t % c
+
+        # Write : Step 3
+        e = ""
+        for _ in range(d):
+            e+=""+str(random.choice([0,1]))
+
+        await give("e", e)
+
+        # Write : Step 5
+        V = await get('V')
+        V[0][j] = v_new
+        await give('V', V)
+
+        R = await get('R')
+        R[0][j] = r
+        await give('R', R)
+
+        X = await get('X')
+        X[0][j] = x
+        await give('X', X)
+
+    if pid == 1:
+        e = get("e")
+        # Write : Step 4
+        C1 = []
+        for j in range(len(v_new)):
+            C1[j] = xor_bit(v_new[j], e[j])
+
+    if pid == 2:
+        e = get("e")
+        # Write : Step 4
+        C1 = []
+        for j in range(len(v_new)):
+            C1[j] = xor_bit(v_new[j], e[j])
+
+#
+# Implementation of Rebuild. Figure 1
+#
+async def Rebuild(io, op, pid, n, c, t, d):
+    give = partial(io.give, op_id=op)
+    get = partial(io.get, op_id=op)
+
+    # Rebuild: Step 1
+    l = log2(n/c)*log2(n)*log2(n)
+    for i in range(l):
+        bi_c = (math.pow(log2(n), 0.5*i))*c
+        # Rebuild: Step 1 (a)
+        if t == (0%bi_c):
+            # Rebuild : Step 1 (a) (i)
+            biplus_c = (math.pow(log2(n), 0.5 * (i+1)))*c
+            u = (t/bi_c)%biplus_c
+            # Rebuild : Step 1 (a) (ii)
+            for j in range(bi_c):
+                V = await get('V')
+                V[i+1][u*bi_c + j ] = V[i][j]
+                V[i][j] = None
+                await give('V', V)
+
+                X = await get('X')
+                X[i+1][u*bi_c + j ] =X[i][j]
+                X[i][j] = None
+                await give('X', X)
+
+            if pid == 0:
+
+                R = await get('R')
+                R[i + 1][u * bi_c + j] = R[i][j]
+                R[i][j] = None
+                await give('R', R)
+
+                e = ""
+                for _ in range(d):
+                   e+=""+str(random.choice([0,1]))
+                E = await get('E')
+                E[i + 1][u * bi_c + j] = e
+                await give('E', E)
+
+                Z = await get('Z')
+                Z[i + 1][u * bi_c + j] = xor(V[i+1][u*bi_c + j ], E[i + 1][u * bi_c + j])
+                await give('Z', Z)
+
+                # Rebuild : Step (a) (iii). Missing.
+                # P0 must build a Let [Q]0 be the injective mapping from [b
+                # i
+                # c] to [2(1+ϵ)b
+                # i
+                # c]
+                # that maps Ri,1...bic
+                # to satisfying locations with these hash functions.
+
+                # Rebuild : Step (a) (iv).
+                give("Q0", [])
+
+            if pid == 1:
+                T = await get('T')
+                Z = await get('Z')
+                Q0 = await get('Q0')
+                T[i + 1][u] = fRoute(Z[i+1], Q0)
+                await give('T', T)
+
+            if pid == 2:
+                T = await get('T')
+                Z = await get('Z')
+                Q0 = await get('Q0')
+                T[i + 1][u] = fRoute(Z[i + 1], Q0)
+                await give('T', T)
+        if t == n:
+            Refresh()
+
+#
+# Implementation of init. Figure 2
+#
+async def init(io, op, pid, n, V):
+    # Init : Step 1
+    if pid == 0:
+        M_0 = permutation(2*n)
+        R_0 = []
+        B = [0]* n-1
+        for i in range(1,n):
+            R_0[i] = M_0[i]
+            if i<n/2:
+                B[i] = M_0[2*i - 1].append(M_0[2*i])
+            subDoram = await fDoram_Init(io, op, n/2, 2(log2(n)+1), B)
+    pass
+
+#
+# Implementation of fDoram_init.
+#
+async def fDoram_Init(io, op, n, d, A):
+    give = partial(io.give, op_id=op)
+    give("A", A)
+    give("n", n)
+    give("d", d)
+    return A
+
+def fRoute(Z, Q):
+    return []
+    pass
+
+#
+# Implementation of Extract - Figure 3
+#
+def Extract(io, op, pid):
+    give = partial(io.give, op_id=op)
+    get = partial(io.get, op_id=op)
+
+    # Extract : Step 1
+    R = get("R")
+    R_concatenate = []
+    for _ in R:
+        R_concatenate.extend(_)
+
+    V = get("V")
+    V_concatenate = []
+    for _ in R:
+        V_concatenate.extend(_)
+
+    X = get("X")
+    X_concatenate = []
+    for _ in X:
+        X_concatenate.extend(_)
+
+    # Extract : Step 2
+    m = len(X_concatenate)
+    D = get('D')
+
+    # Extract : Step 3
+    if pid == 1:
+        S_1 = permutation(m)
+        R_1 = fRoute(R, S_1)
+        V_1 = fRoute(V, S_1)
+        X_1 = fRoute(X, S_1)
+
+        # Extract : Step 5
+        R = get("R")
+
+        # Extract : Step 6
+
+        D_1 = D
+        I = [0]*(m-1)
+        for i in range(1, m):
+            if R_1[i] not in D_1:
+                I[i] = 1
+
+            else:
+                X_1[i] = None
+                V_1[i] = None
+        X = get("X")
+
+        # Extract : Step 7
+        for i in range(V_1):
+            temp = V[i]
+            V_1[i] = V_1[X[i]]
+            V_1[X[i]] = temp
+
+        # Extract : Step 8 and 9
+        return V_1
+
+    if pid == 2:
+        U_2 = permutation(m)
+        R_2 = fRoute(R, U_2)
+        V_2 = fRoute(V, U_2)
+        X_2 = fRoute(X, U_2)
+
+        # Extract : Step 5
+        R = get("R")
+        # Extract : Step 6
+        D_2 = D
+        I = [0] * (m - 1)
+        for i in range(1, m):
+            if R_2[i] not in D_2:
+                I[i] = 1
+            else:
+                X_2[i] = None
+                V_2[i] = None
+        X = get("X")
+
+        # Extract : Step 7
+        for i in range(V_2):
+            temp = V[i]
+            V_2[i] = V_2[X[i]]
+            V_2[X[i]] = temp
+
+        # Extract : Step 8 and 9
+        return V_2
+
+
+#
+
+#
+# Implementation for Refresh method. Figure 3
+#
+def Refresh(io, op, pid):
+    V = Extract(io, op, pid)
+    init(0, 0, V)
 
 #
 # Methods for testing a run of the above code.

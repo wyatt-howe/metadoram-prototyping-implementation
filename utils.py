@@ -34,3 +34,12 @@ def bits_to_index(bits, bitorder='big'):
                 ValueError('Invalid endianness specified.')
         )
     return sum([2**i * b for i, b in enumerate(bits_)])
+
+"""
+Method provides the permutation mapping for a range n to n."""
+def permutation(n):
+    pi_map = {}
+    pi = range(n)
+    for i in range(n):
+        pi_map[(i+1)%n] = pi[i]
+    return pi_map
