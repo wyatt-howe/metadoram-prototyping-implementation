@@ -226,6 +226,30 @@ async def balanced_sspir(io, pid, m, d, A, x, op="BalancedSSPIR"):
         return v2
 
 #
+# Implementation of ReadWrite - Figure 1
+#
+async def ReadWrite(io, op, pid, x, y, f):
+    give = partial(io.give, op_id=op)
+    get = partial(io.get, op_id=op)
+    # ReadWrite : Step 1
+    v = Read(x)
+    # ReadWrite : Step 2
+    v_new = f.read(v, y)
+    # ReadWrite : Step 3
+    n = await get("n")
+    t = await get("t")
+    d = await get("d")
+    c = (log2(n) * log2(n) / log2(log2(n)))
+    await Write(io, op, pid, n, t, d, x, v_new)
+    # ReadWrite : Step 4
+    await Rebuild(io, op, pid, n, c, t, d)
+    # ReadWrite : Step 5
+    t = t + 1
+    await give("t", t)
+    # ReadWrite : Step 6
+    return v
+
+#
 # Implementation of Write - Figure 1
 #
 async def Write(io, op, pid, n, t, d, x, v_new):
@@ -274,7 +298,9 @@ async def Write(io, op, pid, n, t, d, x, v_new):
         for j in range(len(v_new)):
             C1[j] = xor_bit(v_new[j], e[j])
 
-
+#
+# Implementation of Rebuild. Figure 1
+#
 async def Rebuild(io, op, pid, n, c, t, d):
     give = partial(io.give, op_id=op)
     get = partial(io.get, op_id=op)
@@ -290,8 +316,6 @@ async def Rebuild(io, op, pid, n, c, t, d):
             u = (t/bi_c)%biplus_c
             # Rebuild : Step 1 (a) (ii)
             for j in range(bi_c):
-
-
                 V = await get('V')
                 V[i+1][u*bi_c + j ] = V[i][j]
                 V[i][j] = None
@@ -349,13 +373,33 @@ async def Rebuild(io, op, pid, n, c, t, d):
             Refresh()
 
 #
-# Implementation of Extract and Refresh - Figure 3
+# Implementation of init. Figure 2
 #
-def fRoute(Z, Q):
-    return []
+async def init(io, op, pid, n, V):
+    # Init : Step 1
+    if pid == 0:
+        M_0 = permutation(2*n)
+        R_0 = []
+        B = [0]* n-1
+        for i in range(1,n):
+            R_0[i] = M_0[i]
+            if i<n/2:
+                B[i] = M_0[2*i - 1].append(M_0[2*i])
+            subDoram = await fDoram_Init(io, op, n/2, 2(log2(n)+1), B)
     pass
 
-def init(n, d, V):
+#
+# Implementation of fDoram_init.
+#
+async def fDoram_Init(io, op, n, d, A):
+    give = partial(io.give, op_id=op)
+    give("A", A)
+    give("n", n)
+    give("d", d)
+    return A
+
+def fRoute(Z, Q):
+    return []
     pass
 
 #
@@ -384,6 +428,7 @@ def Extract(io, op, pid):
     # Extract : Step 2
     m = len(X_concatenate)
     D = get('D')
+
     # Extract : Step 3
     if pid == 1:
         S_1 = permutation(m)
@@ -444,15 +489,14 @@ def Extract(io, op, pid):
         # Extract : Step 8 and 9
         return V_2
 
-    # 7. Reveal [X] to all parties. (This will contain all indices in [1, n] in a random
-    # order.) Sort [V ] locally according to [X].
-    # 8. Return [V ].
-    # 9. Delete all variables and the subDORAM.
-    return []
-    pass
 
-def Refresh():
-    V = Extract()
+#
+
+#
+# Implementation for Refresh method. Figure 3
+#
+def Refresh(io, op, pid):
+    V = Extract(io, op, pid)
     init(0, 0, V)
 
 #
