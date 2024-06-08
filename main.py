@@ -3,7 +3,7 @@ import math
 from common import Message
 import asyncio
 import concurrent
-from utils import random_bit_generator, xor, bits_to_index
+from utils import random_bit_generator, xor, bits_to_index, permutation
 from math import log2, ceil
 from functools import partial
 import numpy
@@ -352,12 +352,102 @@ async def Rebuild(io, op, pid, n, c, t, d):
 # Implementation of Extract and Refresh - Figure 3
 #
 def fRoute(Z, Q):
+    return []
     pass
 
 def init(n, d, V):
     pass
 
-def Extract():
+#
+# Implementation of Extract - Figure 3
+#
+def Extract(io, op, pid):
+    give = partial(io.give, op_id=op)
+    get = partial(io.get, op_id=op)
+
+    # Extract : Step 1
+    R = get("R")
+    R_concatenate = []
+    for _ in R:
+        R_concatenate.extend(_)
+
+    V = get("V")
+    V_concatenate = []
+    for _ in R:
+        V_concatenate.extend(_)
+
+    X = get("X")
+    X_concatenate = []
+    for _ in X:
+        X_concatenate.extend(_)
+
+    # Extract : Step 2
+    m = len(X_concatenate)
+    D = get('D')
+    # Extract : Step 3
+    if pid == 1:
+        S_1 = permutation(m)
+        R_1 = fRoute(R, S_1)
+        V_1 = fRoute(V, S_1)
+        X_1 = fRoute(X, S_1)
+
+        # Extract : Step 5
+        R = get("R")
+
+        # Extract : Step 6
+
+        D_1 = D
+        I = [0]*(m-1)
+        for i in range(1, m):
+            if R_1[i] not in D_1:
+                I[i] = 1
+
+            else:
+                X_1[i] = None
+                V_1[i] = None
+        X = get("X")
+
+        # Extract : Step 7
+        for i in range(V_1):
+            temp = V[i]
+            V_1[i] = V_1[X[i]]
+            V_1[X[i]] = temp
+
+        # Extract : Step 8 and 9
+        return V_1
+
+    if pid == 2:
+        U_2 = permutation(m)
+        R_2 = fRoute(R, U_2)
+        V_2 = fRoute(V, U_2)
+        X_2 = fRoute(X, U_2)
+
+        # Extract : Step 5
+        R = get("R")
+        # Extract : Step 6
+        D_2 = D
+        I = [0] * (m - 1)
+        for i in range(1, m):
+            if R_2[i] not in D_2:
+                I[i] = 1
+            else:
+                X_2[i] = None
+                V_2[i] = None
+        X = get("X")
+
+        # Extract : Step 7
+        for i in range(V_2):
+            temp = V[i]
+            V_2[i] = V_2[X[i]]
+            V_2[X[i]] = temp
+
+        # Extract : Step 8 and 9
+        return V_2
+
+    # 7. Reveal [X] to all parties. (This will contain all indices in [1, n] in a random
+    # order.) Sort [V ] locally according to [X].
+    # 8. Return [V ].
+    # 9. Delete all variables and the subDORAM.
     return []
     pass
 
